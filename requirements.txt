@@ -16,4 +16,3 @@ pandas
 ezdxf
 xlsxwriter
 psutil
-
