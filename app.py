@@ -79,40 +79,130 @@ def hitung_cut_fill(tanah_pts, desain_pts):
     except: return 0.0, 0.0
 
 # ==========================================
-# 2. GENERATOR OUTPUT
+# 2. GENERATOR OUTPUT (UPDATED: CIVIL STANDARD)
 # ==========================================
 def generate_dxf(results, mode="cross"):
+    """
+    Generate DXF dengan standar gambar teknik sipil.
+    Skala Horizontal 1:100 (1 unit = 1 meter)
+    Skala Vertikal 1:10 (1 unit = 0.1 meter -> Exaggeration 10x)
+    """
     doc = ezdxf.new('R2010')
     msp = doc.modelspace()
-    doc.layers.add(name='TANAH', color=8)
-    doc.layers.add(name='DESAIN', color=1)
-    doc.layers.add(name='TEXT', color=7)
-    doc.layers.add(name='GRID', color=9)
 
+    # --- SETUP LAYERS ---
+    doc.layers.add(name='TANAH_ASLI', color=8, linetype='DASHED') # Abu-abu putus-putus
+    doc.layers.add(name='DESAIN_RENCANA', color=1)                # Merah
+    doc.layers.add(name='TEXT_UTAMA', color=7)
+    doc.layers.add(name='TEXT_DIMENSI', color=2)
+    doc.layers.add(name='GRID_MAJOR', color=9)
+    doc.layers.add(name='FRAME', color=3)
+
+    # Konstanta Skala
+    SC_H = 1.0   # Skala Horizontal (1:100) -> 1 unit drawing = 1 meter
+    SC_V = 10.0  # Skala Vertikal (1:10) -> 10 unit drawing = 1 meter (Exaggeration)
+
+    # Style Text
+    if "ARIAL" not in doc.styles:
+        doc.styles.new("ARIAL", dxfattribs={'font': 'Arial.ttf'})
+
+    def draw_grid_box(origin_x, origin_y, min_x, max_x, min_y, max_y, title):
+        """Membuat Grid, Axis, dan Label Elevasi"""
+        # Rounding grid limits
+        grid_min_x = math.floor(min_x / 5.0) * 5.0
+        grid_max_x = math.ceil(max_x / 5.0) * 5.0
+        grid_min_y = math.floor(min_y / 1.0) * 1.0
+        grid_max_y = math.ceil(max_y / 1.0) * 1.0
+
+        box_w = (grid_max_x - grid_min_x) * SC_H
+        box_h = (grid_max_y - grid_min_y) * SC_V
+        
+        base_x = origin_x
+        base_y = origin_y
+
+        # 1. Grid Vertikal (Jarak)
+        curr_x = grid_min_x
+        while curr_x <= grid_max_x:
+            pos_x = base_x + (curr_x - grid_min_x) * SC_H
+            # Garis Grid
+            msp.add_line((pos_x, base_y), (pos_x, base_y + box_h), dxfattribs={'layer': 'GRID_MAJOR'})
+            # Teks Jarak (Offset)
+            txt = msp.add_text(f"{curr_x:.0f}", dxfattribs={'height': 0.25 * SC_V, 'layer': 'TEXT_DIMENSI', 'style': 'ARIAL'})
+            txt.set_placement((pos_x, base_y - (0.5 * SC_V)), align=TextEntityAlignment.CENTER)
+            curr_x += 1.0 
+
+        # 2. Grid Horizontal (Elevasi)
+        curr_y = grid_min_y
+        while curr_y <= grid_max_y:
+            pos_y = base_y + (curr_y - grid_min_y) * SC_V
+            # Garis Grid
+            msp.add_line((base_x, pos_y), (base_x + box_w, pos_y), dxfattribs={'layer': 'GRID_MAJOR'})
+            # Teks Elevasi
+            txt_l = msp.add_text(f"{curr_y:.2f}", dxfattribs={'height': 0.25 * SC_V, 'layer': 'TEXT_DIMENSI', 'style': 'ARIAL'})
+            txt_l.set_placement((base_x - 1, pos_y), align=TextEntityAlignment.MIDDLE_RIGHT)
+            curr_y += 1.0
+
+        # 3. Frame Box
+        points = [(base_x, base_y), (base_x + box_w, base_y), (base_x + box_w, base_y + box_h), (base_x, base_y + box_h), (base_x, base_y)]
+        msp.add_lwpolyline(points, dxfattribs={'layer': 'FRAME', 'const_width': 0.05 * SC_V})
+
+        # 4. Judul & Datum
+        center_x = base_x + (box_w / 2)
+        t_title = msp.add_text(title, dxfattribs={'height': 0.6 * SC_V, 'layer': 'TEXT_UTAMA', 'style': 'ARIAL'})
+        t_title.set_placement((center_x, base_y + box_h + (1.5 * SC_V)), align=TextEntityAlignment.CENTER)
+        
+        datum_txt = f"DATUM: +{grid_min_y:.2f}"
+        t_datum = msp.add_text(datum_txt, dxfattribs={'height': 0.3 * SC_V, 'layer': 'TEXT_DIMENSI', 'style': 'ARIAL'})
+        t_datum.set_placement((center_x, base_y - (1.5 * SC_V)), align=TextEntityAlignment.CENTER)
+
+        return grid_min_x, grid_min_y 
+
+    # --- LOGIKA UTAMA ---
     if mode == "long":
         tanah, desain = results
-        if tanah: msp.add_lwpolyline(tanah, dxfattribs={'layer': 'TANAH'})
-        if desain: msp.add_lwpolyline(desain, dxfattribs={'layer': 'DESAIN'})
+        all_pts = tanah + desain
+        if not all_pts: return b""
+        
+        min_x, max_x = min(p[0] for p in all_pts), max(p[0] for p in all_pts)
+        min_y, max_y = min(p[1] for p in all_pts), max(p[1] for p in all_pts)
+        
+        ref_x, ref_y = draw_grid_box(0, 0, min_x, max_x, min_y, max_y, "LONG SECTION PROFILE")
+
         if tanah:
-            min_x, max_x = min(p[0] for p in tanah), max(p[0] for p in tanah)
-            min_y, max_y = min(p[1] for p in tanah), max(p[1] for p in tanah)
-            msp.add_line((min_x, min_y), (max_x, min_y), dxfattribs={'layer': 'GRID'})
-            msp.add_text("LONG SECTION PROFILE", dxfattribs={'height': 2.0, 'layer': 'TEXT'}).set_placement((min_x, max_y + 5))
+            pts_draw = [( (p[0]-ref_x)*SC_H, (p[1]-ref_y)*SC_V ) for p in tanah]
+            msp.add_lwpolyline(pts_draw, dxfattribs={'layer': 'TANAH_ASLI'})
+        if desain:
+            pts_draw = [( (p[0]-ref_x)*SC_H, (p[1]-ref_y)*SC_V ) for p in desain]
+            msp.add_lwpolyline(pts_draw, dxfattribs={'layer': 'DESAIN_RENCANA', 'const_width': 0.3})
+
     else:
+        LAYOUT_COLS = 2       
+        SPACING_X = 100.0     
+        SPACING_Y = 150.0     
+        
         for i, item in enumerate(results):
-            col = i % 2; row = i // 2
-            offset_x = col * 60; offset_y = row * -40
-            t_pts = [(p[0]+ox, p[1]+oy) for p, ox, oy in [(pt, offset_x, offset_y) for pt in item.get('points_tanah', [])]]
-            d_pts = [(p[0]+ox, p[1]+oy) for p, ox, oy in [(pt, offset_x, offset_y) for pt in item.get('points_desain', [])]]
+            col = i % LAYOUT_COLS
+            row = i // LAYOUT_COLS
+            origin_x = col * SPACING_X
+            origin_y = row * -SPACING_Y 
             
-            if t_pts: msp.add_lwpolyline(t_pts, dxfattribs={'layer': 'TANAH'})
-            if d_pts: msp.add_lwpolyline(d_pts, dxfattribs={'layer': 'DESAIN'})
+            t_pts = item.get('points_tanah', [])
+            d_pts = item.get('points_desain', [])
+            all_pts = t_pts + d_pts
+            if not all_pts: continue
             
-            info_txt = f"{item['STA']}"
+            min_x, max_x = min(p[0] for p in all_pts), max(p[0] for p in all_pts)
+            min_y, max_y = min(p[1] for p in all_pts), max(p[1] for p in all_pts)
+            
+            judul = f"{item['STA']} | C:{item['cut']:.2f} m2 | F:{item['fill']:.2f} m2"
+            ref_x, ref_y = draw_grid_box(origin_x, origin_y, min_x, max_x, min_y, max_y, judul)
+            
+            if t_pts:
+                draw_t = [(origin_x + (p[0]-ref_x)*SC_H, origin_y + (p[1]-ref_y)*SC_V) for p in t_pts]
+                msp.add_lwpolyline(draw_t, dxfattribs={'layer': 'TANAH_ASLI'})
             if d_pts:
-                info_txt += f" | C:{item['cut']:.2f} | F:{item['fill']:.2f}"
-            
-            msp.add_text(info_txt, dxfattribs={'height': 0.5, 'layer': 'TEXT'}).set_placement((offset_x, offset_y))
+                draw_d = [(origin_x + (p[0]-ref_x)*SC_H, origin_y + (p[1]-ref_y)*SC_V) for p in d_pts]
+                msp.add_lwpolyline(draw_d, dxfattribs={'layer': 'DESAIN_RENCANA', 'const_width': 0.3})
 
     out = io.StringIO()
     doc.write(out)
@@ -168,19 +258,13 @@ def extract_cross_section_from_dem(dem_file, shp_file, interval=50, width_left=2
             
             length = line.length
             
-            # Loop setiap interval (STA)
             for dist in np.arange(0, length + 0.1, interval):
-                # Hitung Titik Pusat & Vektor Normal
                 pt_center = line.interpolate(dist)
-                
                 p_back = line.interpolate(max(0, dist - 0.1))
                 p_front = line.interpolate(min(length, dist + 0.1))
                 
                 dx = p_front.x - p_back.x
                 dy = p_front.y - p_back.y
-                
-                # --- FIX: MATH DOMAIN ERROR ---
-                # Menggunakan pangkat dua (**2) bukan dikali dua (*2)
                 len_v = math.sqrt(dx**2 + dy**2)
                 
                 if len_v == 0: continue
@@ -247,15 +331,69 @@ def render_peta_situasi(dem_file, shp_file):
 # ==========================================
 # 4. MAIN UI
 # ==========================================
-st.title("🚜 PCLP Studio Pro v6.1 (Stable)")
+st.set_page_config(page_title="PCLP Studio", layout="wide")
+st.title("🚜 PCLP Studio Pro v6.1")
 st.caption("Aplikasi Desain Irigasi & Jalan: Cross Section, Long Section & GIS Situasi")
 
 if not HAS_GEO_LIBS: st.warning("⚠️ Modul Geospasial tidak aktif.")
 
-tabs = st.tabs(["📐 CROSS SECTION", "📈 LONG SECTION", "🗺️ PETA SITUASI (GIS)"])
+# --- MEMBUAT TAB (MANUAL BOOK DITAMBAHKAN PERTAMA) ---
+tabs = st.tabs(["📖 MANUAL BOOK", "📐 CROSS SECTION", "📈 LONG SECTION", "🗺️ PETA SITUASI (GIS)"])
 
-# --- TAB 1: CROSS SECTION ---
+# --- TAB 1: MANUAL BOOK (PANDUAN) ---
 with tabs[0]:
+    st.markdown("""
+    ## 📖 Panduan Penggunaan Aplikasi
+    Selamat datang di **PCLP Studio Pro**. Aplikasi ini membantu insinyur sipil untuk mengolah data pengukuran tanah, 
+    menghitung volume cut & fill, serta ekstraksi data topografi otomatis.
+
+    ---
+    ### 1. Fitur Cross Section (Potongan Melintang)
+    Digunakan untuk menghitung luas area galian (Cut) dan timbunan (Fill) dari data ukur manual.
+    
+    **Cara Pakai:**
+    1. Siapkan file Excel (`.xls` atau `.xlsx`).
+    2. Format Excel harus standar PCLP/Land Desktop:
+       - Baris pertama berisi label "STA" dan nilai "X".
+       - Baris kedua berisi label nilai STA dan nilai "Y".
+       - Data koordinat berjejer ke kanan.
+    3. Upload file di menu **Input Data PCLP**.
+    4. Pilih Sheet untuk **Tanah Asli** dan **Desain Rencana**.
+    5. Klik **PROSES DATA**.
+    6. Hasil bisa didownload dalam format **DXF (AutoCAD)** dan **Laporan Excel**.
+
+    ---
+    ### 2. Fitur Long Section (Potongan Memanjang)
+    Digunakan untuk melihat profil elevasi tanah sepanjang trase.
+    
+    **Cara Pakai:**
+    1. Siapkan file Excel/CSV sederhana.
+    2. Kolom 1: Jarak (Station).
+    3. Kolom 2: Elevasi (Z).
+    4. Upload dan grafik akan muncul otomatis.
+
+    ---
+    ### 3. Fitur Peta Situasi (GIS Otomatis) 🗺️
+    Fitur tercanggih untuk membuat profil tanah TANPA pengukuran manual, menggunakan data satelit/drone.
+    
+    **Syarat File:**
+    * **DEM**: File Raster (`.tif`) yang berisi data ketinggian (DEM/DSM/DTM).
+    * **Trase**: File vektor (`.shp` atau `.geojson`) berupa Garis (LineString) jalur rencana.
+    
+    **Langkah Kerja:**
+    1. Upload file **DEM** dan **Trase**.
+    2. Klik **1. Tampilkan Peta** untuk memastikan jalur sudah pas di atas peta.
+    3. Klik **2. Ekstrak Long Section** untuk mendapatkan profil memanjang.
+    4. Atur **Interval** (jarak antar patok) dan **Lebar Kiri/Kanan**.
+    5. Klik **3. Ekstrak Cross Section** untuk membuat potongan melintang otomatis.
+    6. Download hasilnya (Excel format Civil 3D atau DXF).
+    
+    **Catatan Penting:**
+    * Pastikan file DEM dan SHP memiliki sistem koordinat (projection) yang sama atau valid agar hasil akurat.
+    """)
+
+# --- TAB 2: CROSS SECTION ---
+with tabs[1]:
     col_in, col_view = st.columns([1, 2])
     with col_in:
         st.subheader("Input Data PCLP")
@@ -295,8 +433,8 @@ with tabs[0]:
             c1.download_button("📥 DXF Cross", generate_dxf(data, "cross"), "Cross.dxf")
             c2.download_button("📥 Excel Report", generate_excel_report(data), "Vol_Report.xlsx")
 
-# --- TAB 2: LONG SECTION ---
-with tabs[1]:
+# --- TAB 3: LONG SECTION ---
+with tabs[2]:
     st.subheader("Long Section")
     f_long = st.file_uploader("Upload Long", type=['xls', 'xlsx', 'csv'], key='long_up')
     if f_long:
@@ -315,8 +453,8 @@ with tabs[1]:
         ax.grid(True); st.pyplot(fig)
         st.download_button("📥 DXF Long", generate_dxf((ogl, []), "long"), "Long.dxf")
 
-# --- TAB 3: PETA SITUASI (AUTO CROSS SECTION) ---
-with tabs[2]:
+# --- TAB 4: PETA SITUASI (AUTO CROSS SECTION) ---
+with tabs[3]:
     st.header("🗺️ Peta Situasi & Ekstraksi Data")
     
     c1, c2 = st.columns([1, 2])
@@ -360,7 +498,7 @@ with tabs[2]:
                 df_long, err = extract_long_section_from_dem(up_dem, shp_file, interval)
                 if df_long is not None:
                     st.success(f"✅ Long Section: {len(df_long)} titik")
-                    # Kirim ke Tab 2
+                    # Kirim ke Tab Long Section
                     long_data = df_long[['Station (m)', 'Elevation (m)']].dropna().values.tolist()
                     st.session_state['long_res'] = (long_data, [])
                     st.info("Data dikirim ke Tab 'LONG SECTION'.")
@@ -379,7 +517,7 @@ with tabs[2]:
                 if app_data:
                     st.success(f"✅ Berhasil membuat {len(app_data)} Cross Section!")
                     
-                    # 1. Kirim ke Tab 1 (Viewer)
+                    # 1. Kirim ke Tab Cross (Viewer)
                     st.session_state['data_cross'] = app_data
                     st.info("Grafik dikirim ke Tab 'CROSS SECTION' untuk dipreview.")
                     
