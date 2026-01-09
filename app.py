@@ -84,10 +84,7 @@ def hitung_cut_fill(tanah_pts, desain_pts):
 def generate_dxf(results, mode="cross"):
     """
     Generate DXF dengan Standar KP (Irigasi/Bina Marga).
-    Fitur:
-    - Kolom Data (Band) di bawah grafik (Elevasi Tanah, Desain, Jarak).
-    - Grid Vertikal menerus dari grafik sampai ke kolom data.
-    - Skala H 1:100, V 1:10.
+    Fixed: Menggunakan 'lineweight' bukan 'linewidth'.
     """
     doc = ezdxf.new('R2010')
     
@@ -100,8 +97,9 @@ def generate_dxf(results, mode="cross"):
     msp = doc.modelspace()
 
     # --- SETUP LAYERS ---
+    # FIX: linewidth -> lineweight (AutoCAD Standard)
     doc.layers.add(name='TANAH_ASLI', color=8, linetype='DASHED') 
-    doc.layers.add(name='DESAIN_RENCANA', color=1, linewidth=30)  
+    doc.layers.add(name='DESAIN_RENCANA', color=1, lineweight=30)  
     doc.layers.add(name='TEXT_DATA', color=2)      # Kuning
     doc.layers.add(name='TEXT_LABEL', color=7)     # Putih
     doc.layers.add(name='GRID_MAJOR', color=9, linetype='CENTER') 
