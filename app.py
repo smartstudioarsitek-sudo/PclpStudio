@@ -11,6 +11,7 @@ from shapely.geometry import Polygon, LineString
 try:
     import ezdxf
     from ezdxf.enums import TextEntityAlignment
+    from ezdxf.tools.standards import setup_linetypes # Import baru untuk fix error AutoCAD
 except ImportError:
     st.warning("⚠️ Library 'ezdxf' belum terinstall. Fitur DXF tidak akan jalan.")
 
@@ -79,15 +80,24 @@ def hitung_cut_fill(tanah_pts, desain_pts):
     except: return 0.0, 0.0
 
 # ==========================================
-# 2. GENERATOR OUTPUT (UPDATED: CIVIL STANDARD)
+# 2. GENERATOR OUTPUT (UPDATED: CIVIL STANDARD + FIX LINETYPES)
 # ==========================================
 def generate_dxf(results, mode="cross"):
     """
     Generate DXF dengan standar gambar teknik sipil.
-    Skala Horizontal 1:100 (1 unit = 1 meter)
-    Skala Vertikal 1:10 (1 unit = 0.1 meter -> Exaggeration 10x)
+    FIX: Menambahkan setup_linetypes(doc) agar garis DASHED terbaca di AutoCAD.
     """
     doc = ezdxf.new('R2010')
+    
+    # --- FIX UTAMA: LOAD LINE TYPES (DASHED, CENTER, DLL) ---
+    # Ini wajib agar AutoCAD tidak error "Undefined line type"
+    try:
+        setup_linetypes(doc)
+    except:
+        # Fallback manual jika gagal load standard
+        if 'DASHED' not in doc.linetypes:
+            doc.linetypes.new('DASHED', dxfattribs={'description': 'Dashed', 'pattern': [0.5, 0.5, -0.25]})
+
     msp = doc.modelspace()
 
     # --- SETUP LAYERS ---
