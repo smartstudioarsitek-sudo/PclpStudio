@@ -132,33 +132,32 @@ def generate_dxf_output(data_list, mode="cross"):
     setup_kp07_standards(doc)
     msp = doc.modelspace()
     
-    # Konfigurasi Skala (Poin 2.3 & 3.0)
+    # Konfigurasi Skala
     if mode == "long":
-        SC_H = 1.0   # Unit gambar = Meter. Plotting nanti 1:2000
-        SC_V = 10.0  # Eksagerasi Vertikal 10x
+        SC_H = 1.0   # 1 unit = 1 meter
+        SC_V = 10.0  # Eksagerasi vertikal 10x (sesuai standar long section irigasi)
         TEXT_H_LBL = 2.5
         TEXT_H_DAT = 1.8
     else:
-        SC_H = 1.0   # 1:100
-        SC_V = 1.0   # Cross section biasanya 1:1 agar visual proporsional, atau 10x jika detail.
-                     # KP-07 Cross biasanya 1:100 H/V sama.
+        SC_H = 1.0
+        SC_V = 1.0   
         TEXT_H_LBL = 2.0
         TEXT_H_DAT = 1.5
 
-    ROW_H = 15.0 # Tinggi baris tabel data
+    ROW_H = 15.0 
     
     current_x_origin = 0.0
     current_y_origin = 0.0
     max_h_row = 0.0
     
-    # Loop setiap STA (Cross) atau Single Run (Long)
+    # Normalisasi Input: Pastikan items selalu berupa list
     items = data_list if mode == "cross" else [data_list]
     
     for item in items:
-        # Unpack Data
+        # Unpack Data dengan Safety Check
         if mode == "long":
-            pts_tanah = item['points_tanah']
-            pts_desain = item['points_desain']
+            pts_tanah = item.get('points_tanah', [])
+            pts_desain = item.get('points_desain', [])
             sta_label = "LONGITUDINAL SECTION"
         else:
             pts_tanah = item.get('points_tanah', [])
@@ -169,6 +168,9 @@ def generate_dxf_output(data_list, mode="cross"):
 
         # Hitung Extents
         all_pts = pts_tanah + pts_desain
+        # Cegah error min() pada list kosong
+        if not all_pts: continue
+        
         min_x = min(p[0] for p in all_pts)
         max_x = max(p[0] for p in all_pts)
         min_y = min(p[1] for p in all_pts)
@@ -181,14 +183,13 @@ def generate_dxf_output(data_list, mode="cross"):
         datum = g_min_y
         
         graph_w = (g_max_x - g_min_x) * SC_H
-        graph_h = (max_y - datum) * SC_V + 5.0 # +5m space top
+        graph_h = (max_y - datum) * SC_V + 5.0 
         
-        # Koordinat Dasar Gambar
         origin_x = current_x_origin
         origin_y = current_y_origin
-        base_graph_y = origin_y + (4 * ROW_H) # Space untuk 4 baris data
+        base_graph_y = origin_y + (4 * ROW_H)
         
-        # 1. GAMBAR GRID & TEXT DATA (Poin 2.2)
+        # 1. GAMBAR GRID & TEXT DATA
         curr_x = g_min_x
         while curr_x <= g_max_x + 0.01:
             draw_x = origin_x + (curr_x - g_min_x) * SC_H
@@ -197,40 +198,38 @@ def generate_dxf_output(data_list, mode="cross"):
             msp.add_line((draw_x, base_graph_y), (draw_x, base_graph_y + graph_h), 
                          dxfattribs={'layer': 'GRID_MAJOR'})
             
-            # Interpolasi Elevasi
+            # Helper Interpolasi
             def get_y(pts, x):
                 if not pts: return None
-                # Simple linear interpolation
                 for i in range(len(pts)-1):
                     if pts[i][0] <= x <= pts[i+1][0]:
-                        ratio = (x - pts[i][0])/(pts[i+1][0] - pts[i][0]) if (pts[i+1][0]-pts[i][0])!=0 else 0
+                        denom = (pts[i+1][0] - pts[i][0])
+                        if denom == 0: return pts[i][1]
+                        ratio = (x - pts[i][0]) / denom
                         return pts[i][1] + ratio * (pts[i+1][1] - pts[i][1])
                 return None
 
             z_t = get_y(pts_tanah, curr_x)
             z_d = get_y(pts_desain, curr_x)
             
-            # Penulisan Data (Rotasi 90 derajat - Poin 2.2)
-            # Baris 1: Jarak
+            # Teks Data (Rotasi 90)
             msp.add_text(f"{curr_x:.1f}", dxfattribs={
                 'style': 'ARIAL_NARROW', 'height': TEXT_H_DAT, 'layer': 'TEXT_DATA', 'rotation': 90
             }).set_placement((draw_x, origin_y + 0.5*ROW_H), align=TextEntityAlignment.MIDDLE_CENTER)
             
-            # Baris 2: Tanah Asli
             if z_t is not None:
                 msp.add_text(f"{z_t:.3f}", dxfattribs={
                     'style': 'ARIAL_NARROW', 'height': TEXT_H_DAT, 'layer': 'TEXT_DATA', 'rotation': 90
                 }).set_placement((draw_x, origin_y + 1.5*ROW_H), align=TextEntityAlignment.MIDDLE_CENTER)
             
-            # Baris 3: Desain
             if z_d is not None:
                 msp.add_text(f"{z_d:.3f}", dxfattribs={
                     'style': 'ARIAL_NARROW', 'height': TEXT_H_DAT, 'layer': 'TEXT_DATA', 'rotation': 90
                 }).set_placement((draw_x, origin_y + 2.5*ROW_H), align=TextEntityAlignment.MIDDLE_CENTER)
                 
-            curr_x += 2.0 # Interval Grid
+            curr_x += 2.0
             
-        # 2. GAMBAR POLYLINE UTAMA (Poin 2.1)
+        # 2. GAMBAR POLYLINE
         if pts_tanah:
             pts_draw_t = [(origin_x + (p[0]-g_min_x)*SC_H, base_graph_y + (p[1]-datum)*SC_V) for p in pts_tanah]
             msp.add_lwpolyline(pts_draw_t, dxfattribs={'layer': 'TANAH_ASLI'})
@@ -239,50 +238,49 @@ def generate_dxf_output(data_list, mode="cross"):
             pts_draw_d = [(origin_x + (p[0]-g_min_x)*SC_H, base_graph_y + (p[1]-datum)*SC_V) for p in pts_desain]
             msp.add_lwpolyline(pts_draw_d, dxfattribs={'layer': 'DESAIN_RENCANA'})
             
-        # 3. HATCHING / ARSIRAN (Fitur Baru - Poin 6.3)
-        # Transform points to Local DXF coordinates for calculation
+        # 3. HATCHING
         if pts_tanah and pts_desain:
             t_local = [(origin_x + (p[0]-g_min_x)*SC_H, base_graph_y + (p[1]-datum)*SC_V) for p in pts_tanah]
             d_local = [(origin_x + (p[0]-g_min_x)*SC_H, base_graph_y + (p[1]-datum)*SC_V) for p in pts_desain]
             
-            poly_cut, poly_fill = calculate_hatch_areas(t_local, d_local)
-            
-            # Arsiran Cut (Merah/ANSI31)
-            draw_shapely_polygon_as_hatch(msp, poly_cut, 'HATCH_CUT', scale=0.5)
-            # Arsiran Fill (Hijau/ANSI37 - Silang)
-            draw_shapely_polygon_as_hatch(msp, poly_fill, 'HATCH_FILL', pattern_name='ANSI37', scale=0.5)
+            # Bungkus dalam try-except agar tidak memutus proses jika geometri error
+            try:
+                poly_cut, poly_fill = calculate_hatch_areas(t_local, d_local)
+                draw_shapely_polygon_as_hatch(msp, poly_cut, 'HATCH_CUT', scale=0.5)
+                draw_shapely_polygon_as_hatch(msp, poly_fill, 'HATCH_FILL', pattern_name='ANSI37', scale=0.5)
+            except Exception as e:
+                print(f"Hatch Error at {sta_label}: {e}")
 
-        # 4. FRAME & LABEL BAND (Poin 3.1 & 4.2)
-        # Garis Horizontal Tabel
+        # 4. FRAME & LABEL
         for i in range(5):
             y_line = origin_y + i * ROW_H
             msp.add_line((origin_x, y_line), (origin_x + graph_w, y_line), dxfattribs={'layer': 'FRAME_TABLE'})
             
-        # Label Kiri
         labels = ["JARAK", "EL. TANAH", "EL. RENCANA", "DATUM"]
         for i, txt in enumerate(labels):
             msp.add_text(txt, dxfattribs={'style': 'ARIAL', 'height': TEXT_H_LBL, 'layer': 'TEXT_LABEL'})\
                .set_placement((origin_x - 1, origin_y + (i+0.5)*ROW_H), align=TextEntityAlignment.MIDDLE_RIGHT)
 
-        # Judul STA
         msp.add_text(sta_label, dxfattribs={'style': 'ARIAL', 'height': 4.0, 'layer': 'TEXT_LABEL'})\
            .set_placement((origin_x + graph_w/2, base_graph_y + graph_h + 2), align=TextEntityAlignment.BOTTOM_CENTER)
         
-        # Datum Text
         msp.add_text(f"+{datum:.2f}", dxfattribs={'style': 'ARIAL', 'height': TEXT_H_LBL, 'layer': 'TEXT_LABEL'})\
            .set_placement((origin_x - 1, origin_y + 3.5*ROW_H), align=TextEntityAlignment.MIDDLE_RIGHT)
 
-        # Layout Logic (Pindah Posisi untuk Next Loop)
         if mode == "cross":
-            current_x_origin += graph_w + 50.0 # Spasi horizontal
+            current_x_origin += graph_w + 50.0 
             max_h_row = max(max_h_row, graph_h + 4*ROW_H)
-            
-            if current_x_origin > 500.0: # Wrap ke bawah jika terlalu lebar
+            if current_x_origin > 500.0:
                 current_x_origin = 0.0
                 current_y_origin -= (max_h_row + 50.0)
                 max_h_row = 0.0
 
-    return io.StringIO(doc.write_result()).getvalue().encode('utf-8')
+    # === BAGIAN PERBAIKAN INTI ===
+    # Menggunakan io.StringIO untuk menulis buffer teks DXF
+    stream = io.StringIO()
+    doc.write(stream)  # Tulis konten DXF ke stream
+    # Ambil nilai string dan encode ke bytes untuk download button Streamlit
+    return stream.getvalue().encode('utf-8')
 
 # ==========================================
 # 4. PARSER DATA INPUT
@@ -417,3 +415,4 @@ with tab_gis:
         # ... (Kode GIS eksisting dapat ditempel di sini jika diperlukan)
     else:
         st.warning("⚠️ Engine GIS Inaktif. Install `geopandas rasterio` untuk mengaktifkan fitur Peta Situasi otomatis.")
+
