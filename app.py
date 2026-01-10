@@ -11,7 +11,7 @@ try:
     import ezdxf
     from ezdxf.enums import TextEntityAlignment
 except ImportError:
-    st.warning("⚠️ Library 'ezdxf' belum terinstall. Fitur DXF tidak akan jalan.")
+    st.warning("⚠️ Library 'ezdxf' belum terinstall. Fitur DXF tidak akan jalan. (pip install ezdxf)")
 
 HAS_GEO_LIBS = False
 try:
@@ -288,7 +288,7 @@ st.caption("Aplikasi Desain Irigasi & Jalan: Cross Section, Long Section & GIS S
 
 if not HAS_GEO_LIBS: st.warning("⚠️ Modul Geospasial tidak aktif.")
 
-# --- INISIALISASI SESSION STATE (PENTING AGAR TIDAK ERROR) ---
+# --- INISIALISASI SESSION STATE (ANTI CRASH) ---
 if 'data_cross' not in st.session_state:
     st.session_state['data_cross'] = []
 if 'long_res' not in st.session_state:
@@ -371,7 +371,7 @@ with tabs[2]:
     else:
         st.info("Belum ada data Long Section.")
 
-# --- TAB 4: CROSS SECTION (DIPERBAIKI) ---
+# --- TAB 4: CROSS SECTION ---
 with tabs[3]:
     col_in, col_view = st.columns([1, 2])
     with col_in:
@@ -398,11 +398,11 @@ with tabs[3]:
             except: st.error("Gagal baca file.")
 
     with col_view:
-        # --- FIX ANTI CRASH: CEK DATA ADA ATAU TIDAK ---
+        # --- FIX UTAMA: CEK DATA SEBELUM RENDER SLIDER ---
         data = st.session_state.get('data_cross', [])
         
         if len(data) > 0:
-            # Slider aman karena max_value minimal 0
+            # Slider sekarang aman karena max_value minimal 0
             idx = st.slider("Pilih STA", 0, len(data)-1, 0)
             
             item = data[idx]
