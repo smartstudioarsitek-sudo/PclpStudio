@@ -455,15 +455,39 @@ with tabs[3]:
             except: st.error("Gagal baca file.")
 
     with col_view:
-        if 'data_cross' in st.session_state:
+        # Cek apakah key ada di session DAN datanya tidak kosong
+        if 'data_cross' in st.session_state and len(st.session_state['data_cross']) > 0:
             data = st.session_state['data_cross']
+            
+            # Slider aman karena len(data) minimal 1, jadi max_value minimal 0
             idx = st.slider("Pilih STA", 0, len(data)-1, 0)
+            
             item = data[idx]
             fig, ax = plt.subplots(figsize=(10, 4))
-            if item['points_tanah']: ax.plot(*zip(*item['points_tanah']), 'k-o', label='Tanah')
-            if item['points_desain']: ax.plot(*zip(*item['points_desain']), 'r-', label='Desain')
+            
+            # Plot Tanah
+            if item['points_tanah']: 
+                ax.plot(*zip(*item['points_tanah']), 'k-o', label='Tanah')
+            
+            # Plot Desain
+            if item['points_desain']: 
+                ax.plot(*zip(*item['points_desain']), 'r-', label='Desain')
+            
             ax.set_title(f"{item['STA']} | C:{item['cut']:.2f} | F:{item['fill']:.2f}")
-            ax.legend(); ax.grid(True); st.pyplot(fig)
+            ax.legend()
+            ax.grid(True)
+            st.pyplot(fig)
+            
             c1, c2 = st.columns(2)
-            c1.download_button("📥 DXF Cross (Std KP)", generate_dxf(data, "cross"), "Cross_KP.dxf")
-            c2.download_button("📥 Excel Report", generate_excel_report(data), "Vol_Report.xlsx")
+            # Generate DXF button
+            dxf_btn = generate_dxf(data, "cross")
+            c1.download_button("📥 DXF Cross (Std KP)", dxf_btn, "Cross_KP.dxf", mime="application/dxf")
+            
+            # Generate Excel button
+            xls_btn = generate_excel_report(data)
+            c2.download_button("📥 Excel Report", xls_btn, "Vol_Report.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        
+        else:
+            # Tampilkan pesan jika data kosong, jangan error
+            st.info("⚠️ Belum ada data Cross Section yang diproses.")
+            st.caption("Silakan upload file Excel di panel kiri atau lakukan ekstraksi GIS di Tab 'PETA SITUASI'.")
